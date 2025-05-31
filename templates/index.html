@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Splitter</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .timeline-marker {
+            position: absolute;
+            width: 2px;
+            height: 20px;
+            background-color: #3B82F6;
+            cursor: pointer;
+        }
+
+        .timeline-marker:hover {
+            background-color: #2563EB;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-3xl font-bold text-center mb-8">Video Splitter</h1>
+
+        <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-6">
+            <!-- File Upload Section -->
+            <div class="mb-8">
+                <label class="block text-gray-700 text-sm font-bold mb-2" for="video-upload">
+                    Upload Video
+                </label>
+                <input type="file" id="video-upload" accept=".mp4,.avi,.mov,.mkv"
+                    class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <!-- Video Preview Section -->
+            <div id="video-preview" class="hidden mb-8">
+                <video id="video-player" controls class="w-full rounded-lg"></video>
+                <p id="file-size" class="text-sm text-gray-600"></p>
+            </div>
+
+            <!-- Timeline Section -->
+            <div id="timeline-section" class="hidden mb-8">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="text-lg font-semibold">Timeline</h3>
+                    <button id="add-marker" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+                        Add Split Point
+                    </button>
+                </div>
+                <div id="timeline" class="relative h-8 bg-gray-200 rounded cursor-pointer">
+                    <!-- Timeline markers will be added here -->
+                </div>
+                <div id="time-markers" class="mt-2 text-sm text-gray-600">
+                    <!-- Time markers will be displayed here -->
+                </div>
+            </div>
+
+            <!-- Split Button -->
+            <div id="split-button-container" class="hidden">
+                <button id="split-video" class="w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">
+                    Split Video
+                </button>
+            </div>
+
+            <!-- Loading Indicator -->
+            <div id="loading" class="hidden text-center py-4">
+                <div
+                    class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent">
+                </div>
+                <p class="mt-2 text-gray-600">Processing video...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentVideo = null;
+        let markers = [];
+        let videoDuration = 0;
+
+        document.getElementById('video-upload').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('video', file);
+
+            const fileSize = file.size;
+            const fileSizeInMB = fileSize / (1024 * 1024);
+            document.getElementById('file-size').textContent = `File size: ${fileSizeInMB.toFixed(2)} MB`;
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    currentVideo = data.filename;
+                    videoDuration = data.duration;
+
+                    // Show video preview
+                    const videoPlayer = document.getElementById('video-player');
+                    videoPlayer.src = URL.createObjectURL(file);
+                    document.getElementById('video-preview').classList.remove('hidden');
+                    document.getElementById('timeline-section').classList.remove('hidden');
+                    document.getElementById('split-button-container').classList.remove('hidden');
+                } else {
+                    alert(data.error);
+                }
+            } catch (error) {
+                alert('Error uploading video');
+            }
+        });
+
+        document.getElementById('add-marker').addEventListener('click', () => {
+            const videoPlayer = document.getElementById('video-player');
+            const currentTime = videoPlayer.currentTime;
+            addMarker(currentTime);
+        });
+
+        function addMarker(time) {
+            if (markers.includes(time)) return;
+
+            markers.push(time);
+            markers.sort((a, b) => a - b);
+            updateTimeline();
+        }
+
+        function updateTimeline() {
+            const timeline = document.getElementById('timeline');
+            const timeMarkers = document.getElementById('time-markers');
+
+            // Clear existing markers
+            timeline.innerHTML = '';
+            timeMarkers.innerHTML = '';
+
+            // Add markers
+            markers.forEach((time, index) => {
+                const position = (time / videoDuration) * 100;
+
+                // Add visual marker
+                const marker = document.createElement('div');
+                marker.className = 'timeline-marker';
+                marker.style.left = `${position}%`;
+                marker.dataset.time = time;
+                marker.addEventListener('click', () => removeMarker(time));
+                timeline.appendChild(marker);
+
+                // Add time label
+                const timeLabel = document.createElement('div');
+                timeLabel.className = 'inline-block mx-2';
+                timeLabel.textContent = formatTime(time);
+                timeMarkers.appendChild(timeLabel);
+            });
+        }
+
+        function removeMarker(time) {
+            markers = markers.filter(t => t !== time);
+            updateTimeline();
+        }
+
+        function formatTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = Math.floor(seconds % 60);
+            return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+        }
+
+        document.getElementById('split-video').addEventListener('click', async () => {
+            if (!currentVideo || markers.length === 0) return;
+
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('split-video').disabled = true;
+
+            try {
+                const response = await fetch('/split', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        filename: currentVideo,
+                        timestamps: markers
+                    })
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'split_videos.zip';
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                } else {
+                    const data = await response.json();
+                    alert(data.error);
+                }
+            } catch (error) {
+                alert('Error splitting video');
+            } finally {
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('split-video').disabled = false;
+            }
+        });
+    </script>
+</body>
+
+</html>
