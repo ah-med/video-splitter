@@ -1,9 +1,8 @@
 import os
-from flask import Flask, request, render_template, send_file, jsonify
+from flask import Flask, request, render_template, jsonify, send_from_directory
 from werkzeug.utils import secure_filename
 from moviepy.editor import VideoFileClip
-import tempfile
-import shutil
+import uuid
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -60,9 +59,12 @@ def split_video():
     if not os.path.exists(filepath):
         return jsonify({'error': 'File not found'}), 404
     
-    # Create temporary directory for split videos
-    temp_dir = tempfile.mkdtemp()
+    # Create unique temporary directory for split videos
+    unique_id = str(uuid.uuid4())
+    temp_dir = os.path.join('uploads', f'split_{unique_id}')
+    os.makedirs(temp_dir, exist_ok=True)
     split_files = []
+    preview_urls = []
     
     try:
         video = VideoFileClip(filepath)
@@ -74,9 +76,8 @@ def split_video():
             
             # Extract subclip with audio
             subclip = video.subclip(start_time, end_time)
-            
-
-            output_path = os.path.join(temp_dir, f'part_{i+1}.mp4')
+            output_filename = f'part_{i+1}.mp4'
+            output_path = os.path.join(temp_dir, output_filename)
             subclip.write_videofile(
                 output_path,
                 codec='libx264',
@@ -87,25 +88,20 @@ def split_video():
                 preset='medium'  # Balance between quality and speed
             )
             split_files.append(output_path)
+            preview_urls.append(f'/preview/{unique_id}/{output_filename}')
         
         video.close()
         
-        # Create a zip file containing all split videos
-        zip_path = os.path.join(temp_dir, 'split_videos.zip')
-        shutil.make_archive(zip_path[:-4], 'zip', temp_dir)
-        
-        return send_file(zip_path, as_attachment=True, download_name='split_videos.zip')
+        return jsonify({'preview_urls': preview_urls, 'unique_id': unique_id})
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-    
-    finally:
-        # Cleanup
-        for file in split_files:
-            if os.path.exists(file):
-                os.remove(file)
-        if os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir)
+
+# Serve split video files for preview
+@app.route('/preview/<unique_id>/<filename>')
+def preview_split_video(unique_id, filename):
+    directory = os.path.join('uploads', f'split_{unique_id}')
+    return send_from_directory(directory, filename)
 
 if __name__ == '__main__':
     app.run(debug=True) 

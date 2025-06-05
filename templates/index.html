@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Splitter</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         .timeline-marker {
             position: absolute;
@@ -22,44 +23,58 @@
 </head>
 
 <body class="bg-gray-100 min-h-screen">
-    <div class="container mx-auto px-4 py-8">
-        <h1 class="text-3xl font-bold text-center mb-8">Video Splitter</h1>
+    <div class="container mx-auto px-4 py-4 sm:py-8">
+        <h1 class="text-2xl sm:text-3xl font-bold text-center mb-4 sm:mb-8">Video Splitter</h1>
 
-        <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-6">
+        <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-4 sm:p-6">
             <!-- File Upload Section -->
-            <div class="mb-8">
+            <div class="mb-6 sm:mb-8">
                 <label class="block text-gray-700 text-sm font-bold mb-2" for="video-upload">
                     Upload Video
                 </label>
                 <input type="file" id="video-upload" accept=".mp4,.avi,.mov,.mkv"
-                    class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base">
             </div>
 
             <!-- Video Preview Section -->
-            <div id="video-preview" class="hidden mb-8">
+            <div id="video-preview" class="hidden mb-6 sm:mb-8">
                 <video id="video-player" controls class="w-full rounded-lg"></video>
-                <p id="file-size" class="text-sm text-gray-600"></p>
+                <p id="file-size" class="text-sm text-gray-600 mt-2"></p>
             </div>
 
             <!-- Timeline Section -->
-            <div id="timeline-section" class="hidden mb-8">
-                <div class="flex justify-between items-center mb-2">
+            <div id="timeline-section" class="hidden mb-6 sm:mb-8">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sm:gap-2 mb-4">
                     <h3 class="text-lg font-semibold">Timeline</h3>
-                    <button id="add-marker" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
-                        Add Split Point
-                    </button>
+                    <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                        <!-- Interval Input -->
+                        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full sm:w-auto">
+                            <input type="number" id="interval-input" min="1" step="1"
+                                class="w-full sm:w-32 px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                placeholder="Seconds">
+                            <button id="apply-interval"
+                                class="w-full sm:w-auto px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 text-sm whitespace-nowrap">
+                                Apply Interval
+                            </button>
+                        </div>
+                        <button id="add-marker"
+                            class="w-full sm:w-auto px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm">
+                            Add Split Point
+                        </button>
+                    </div>
                 </div>
                 <div id="timeline" class="relative h-8 bg-gray-200 rounded cursor-pointer">
                     <!-- Timeline markers will be added here -->
                 </div>
-                <div id="time-markers" class="mt-2 text-sm text-gray-600">
+                <div id="time-markers" class="mt-2 text-sm text-gray-600 flex flex-wrap gap-2">
                     <!-- Time markers will be displayed here -->
                 </div>
             </div>
 
             <!-- Split Button -->
             <div id="split-button-container" class="hidden">
-                <button id="split-video" class="w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">
+                <button id="split-video"
+                    class="w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 text-sm sm:text-base">
                     Split Video
                 </button>
             </div>
@@ -69,8 +84,16 @@
                 <div
                     class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent">
                 </div>
-                <p class="mt-2 text-gray-600">Processing video...</p>
+                <p class="mt-2 text-gray-600 text-sm sm:text-base">Processing video...</p>
             </div>
+        </div>
+    </div>
+
+    <div class="container mx-auto px-4 py-4 sm:py-8">
+        <h1 class="text-2xl sm:text-3xl font-bold text-center mb-4 sm:mb-8">Split Videos</h1>
+        <div id="zip-download-container" class="flex justify-center mb-4 sm:mb-6"></div>
+        <div id="split-videos" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <!-- Split videos will be displayed here -->
         </div>
     </div>
 
@@ -151,7 +174,7 @@
 
                 // Add time label
                 const timeLabel = document.createElement('div');
-                timeLabel.className = 'inline-block mx-2';
+                timeLabel.className = 'inline-block bg-gray-100 px-2 py-1 rounded text-xs sm:text-sm';
                 timeLabel.textContent = formatTime(time);
                 timeMarkers.appendChild(timeLabel);
             });
@@ -186,26 +209,143 @@
                     })
                 });
 
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('split-video').disabled = false;
+
                 if (response.ok) {
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'split_videos.zip';
-                    document.body.appendChild(a);
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                    document.body.removeChild(a);
+                    const data = await response.json();
+                    // ZIP download button
+                    const zipDownloadContainer = document.getElementById('zip-download-container');
+                    zipDownloadContainer.innerHTML = '';
+                    if (data.zip_url) {
+                        const zipBtn = document.createElement('a');
+                        zipBtn.href = data.zip_url;
+                        zipBtn.className = 'px-6 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-700 transition mb-4 text-center';
+                        zipBtn.textContent = 'Download All as ZIP';
+                        zipBtn.download = '';
+                        zipDownloadContainer.appendChild(zipBtn);
+                    }
+                    if (data.preview_urls && Array.isArray(data.preview_urls)) {
+                        const splitVideosContainer = document.getElementById('split-videos');
+                        splitVideosContainer.innerHTML = '';
+
+                        // Create ZIP download button
+                        const zipDownloadContainer = document.getElementById('zip-download-container');
+                        zipDownloadContainer.innerHTML = '';
+                        const zipBtn = document.createElement('button');
+                        zipBtn.className = 'px-6 py-3 bg-blue-600 text-white rounded-lg shadow-lg hover:bg-blue-700 transition mb-4 text-center flex items-center justify-center gap-2 text-lg font-semibold';
+                        zipBtn.innerHTML = `
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            Download All as ZIP
+                        `;
+                        zipBtn.onclick = async () => {
+                            try {
+                                zipBtn.disabled = true;
+                                zipBtn.innerHTML = `
+                                    <svg class="animate-spin h-6 w-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Creating ZIP...
+                                `;
+
+                                const zip = new JSZip();
+
+                                // Fetch each video and add to ZIP
+                                for (let i = 0; i < data.preview_urls.length; i++) {
+                                    const response = await fetch(data.preview_urls[i]);
+                                    const blob = await response.blob();
+                                    zip.file(`part_${i + 1}.mp4`, blob);
+                                }
+
+                                // Generate and download ZIP
+                                const content = await zip.generateAsync({ type: "blob" });
+                                const url = window.URL.createObjectURL(content);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = 'split_videos.zip';
+                                document.body.appendChild(a);
+                                a.click();
+                                window.URL.revokeObjectURL(url);
+                                document.body.removeChild(a);
+
+                                // Reset button
+                                zipBtn.disabled = false;
+                                zipBtn.innerHTML = `
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                    </svg>
+                                    Download All as ZIP
+                                `;
+                            } catch (error) {
+                                console.error('Error creating ZIP:', error);
+                                alert('Error creating ZIP file. Please try again.');
+                                zipBtn.disabled = false;
+                                zipBtn.innerHTML = `
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                    </svg>
+                                    Download All as ZIP
+                                `;
+                            }
+                        };
+                        zipDownloadContainer.appendChild(zipBtn);
+
+                        // Create video previews
+                        data.preview_urls.forEach((url, idx) => {
+                            const videoWrapper = document.createElement('div');
+                            videoWrapper.className = 'bg-white rounded-lg shadow-md p-4 flex flex-col items-center';
+                            const video = document.createElement('video');
+                            video.src = url;
+                            video.controls = true;
+                            video.className = 'w-full rounded-lg mb-2';
+                            videoWrapper.appendChild(video);
+                            const label = document.createElement('div');
+                            label.className = 'text-center text-sm text-gray-700';
+                            label.textContent = `Part ${idx + 1}`;
+                            videoWrapper.appendChild(label);
+                            splitVideosContainer.appendChild(videoWrapper);
+                        });
+                    } else {
+                        alert('No preview URLs returned.');
+                    }
                 } else {
                     const data = await response.json();
                     alert(data.error);
                 }
             } catch (error) {
-                alert('Error splitting video');
-            } finally {
                 document.getElementById('loading').classList.add('hidden');
                 document.getElementById('split-video').disabled = false;
+                alert('Error splitting video');
             }
+        });
+
+        // Add interval split functionality
+        document.getElementById('apply-interval').addEventListener('click', () => {
+            const intervalInput = document.getElementById('interval-input');
+            const interval = parseInt(intervalInput.value);
+
+            if (!interval || interval < 1) {
+                alert('Please enter a valid interval in seconds (minimum 1 second)');
+                return;
+            }
+
+            if (!videoDuration) {
+                alert('Please upload a video first');
+                return;
+            }
+
+            // Clear existing markers
+            markers = [];
+
+            // Add markers at intervals
+            for (let time = interval; time < videoDuration; time += interval) {
+                markers.push(time);
+            }
+
+            updateTimeline();
         });
     </script>
 </body>
